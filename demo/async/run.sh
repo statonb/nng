@@ -14,7 +14,7 @@ do
 	i=$(( i + 1 ))
 	rnd=$(( RANDOM % 1000 + 500 ))
 	echo "Starting client $i: server replies after $rnd msec"
-	./client $ADDR $rnd &
+	./bls_client $i $ADDR $rnd &
 	eval CLIENT_PID[$i]=$!
 done
 
