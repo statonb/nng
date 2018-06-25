@@ -6,3 +6,5 @@ wbuild
 .vscode/.cmaketools.json
 .vscode
 etc/nng.sublime-workspace
+demo/skeleton/obj/*
+demo/skeleton/bin/*
