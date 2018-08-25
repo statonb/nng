@@ -53,12 +53,12 @@ server(const char *url)
         }
         else
         {
-        char *d = date();
-        printf("SERVER: PUBLISHING DATE %s\n", d);
-        if ((rv = nng_send(sock, d, strlen(d) + 1, 0)) != 0)
-        {
-            fatal("nng_send", rv);
-        }
+            char *d = date();
+            printf("SERVER: PUBLISHING DATE %s\n", d);
+            if ((rv = nng_send(sock, d, strlen(d) + 1, 0)) != 0)
+            {
+                fatal("nng_send", rv);
+            }
         }
         sleep(1);
     }

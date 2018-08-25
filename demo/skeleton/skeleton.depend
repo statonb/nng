@@ -32,3 +32,36 @@
 
 1529941090 /home/bruno/Workspace/nng/demo/skeleton/urls.h
 
+1529962878 source:/home/brian/Workspace/nng/demo/skeleton/main.cpp
+	<iostream>
+	<string.h>
+	<getopt.h>
+	"process.h"
+	"urls.h"
+	<nng/nng.h>
+	<nng/protocol/pipeline0/pull.h>
+	<nng/protocol/pipeline0/push.h>
+
+1529962878 /home/brian/Workspace/nng/demo/skeleton/process.h
+	<errno.h>
+	<stdio.h>
+	<stdlib.h>
+	<stdarg.h>
+	<stddef.h>
+	<semaphore.h>
+	<fcntl.h>
+	<sys/types.h>
+	<unistd.h>
+	<mqueue.h>
+	<sys/stat.h>
+	<sys/mman.h>
+	<netinet/in.h>
+	<arpa/inet.h>
+	<vector>
+	<pthread.h>
+
+1529963113 /home/brian/Workspace/nng/demo/skeleton/urls.h
+
+1529962878 source:/home/brian/Workspace/nng/demo/skeleton/process.cpp
+	"process.h"
+
