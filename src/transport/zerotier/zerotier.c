@@ -2251,6 +2251,18 @@ zt_ep_init(void **epp, nni_url *url, nni_sock *sock, int mode)
 	return (0);
 }
 
+static int
+zt_dialer_init(void **epp, nni_url *url, nni_sock *sock)
+{
+	return (zt_ep_init(epp, url, sock, NNI_EP_MODE_DIAL));
+}
+
+static int
+zt_listener_init(void **epp, nni_url *url, nni_sock *sock)
+{
+	return (zt_ep_init(epp, url, sock, NNI_EP_MODE_LISTEN));
+}
+
 static void
 zt_ep_close(void *arg)
 {
@@ -2588,7 +2600,9 @@ zt_ep_set_recvmaxsz(void *arg, const void *data, size_t sz, nni_opt_type t)
 	int    rv;
 
 	if ((rv = nni_copyin_size(&val, data, sz, 0, NNI_MAXSZ, t)) == 0) {
+		nni_mtx_lock(&zt_lk);
 		ep->ze_rcvmax = val;
+		nni_mtx_unlock(&zt_lk);
 	}
 	return (rv);
 }
@@ -2597,7 +2611,11 @@ static int
 zt_ep_get_recvmaxsz(void *arg, void *data, size_t *szp, nni_opt_type t)
 {
 	zt_ep *ep = arg;
-	return (nni_copyout_size(ep->ze_rcvmax, data, szp, t));
+	int    rv;
+	nni_mtx_lock(&zt_lk);
+	rv = nni_copyout_size(ep->ze_rcvmax, data, szp, t);
+	nni_mtx_unlock(&zt_lk);
+	return (rv);
 }
 
 static int
@@ -2622,16 +2640,16 @@ zt_ep_set_home(void *arg, const void *data, size_t sz, nni_opt_type t)
 	zt_ep *ep = arg;
 
 	if ((rv = zt_ep_chk_string(data, sz, t)) == 0) {
+		nni_mtx_lock(&zt_lk);
 		if (ep->ze_running) {
 			rv = NNG_ESTATE;
 		} else {
-			nni_mtx_lock(&zt_lk);
 			nni_strlcpy(ep->ze_home, data, sizeof(ep->ze_home));
 			if ((rv = zt_node_find(ep)) != 0) {
 				ep->ze_ztn = NULL;
 			}
-			nni_mtx_unlock(&zt_lk);
 		}
+		nni_mtx_unlock(&zt_lk);
 	}
 
 	return (rv);
@@ -2641,7 +2659,12 @@ static int
 zt_ep_get_home(void *arg, void *data, size_t *szp, nni_opt_type t)
 {
 	zt_ep *ep = arg;
-	return (nni_copyout_str(ep->ze_home, data, szp, t));
+	int    rv;
+
+	nni_mtx_lock(&zt_lk);
+	rv = nni_copyout_str(ep->ze_home, data, szp, t);
+	nni_mtx_unlock(&zt_lk);
+	return (rv);
 }
 
 static int
@@ -2651,11 +2674,13 @@ zt_ep_get_url(void *arg, void *data, size_t *szp, nni_opt_type t)
 	zt_ep *  ep = arg;
 	uint64_t addr;
 
+	nni_mtx_lock(&zt_lk);
 	addr = ep->ze_mode == NNI_EP_MODE_DIAL ? ep->ze_raddr : ep->ze_laddr;
 	snprintf(ustr, sizeof(ustr), "zt://%llx.%llx:%u",
 	    (unsigned long long) addr >> zt_port_shift,
 	    (unsigned long long) ep->ze_nwid,
 	    (unsigned) (addr & zt_port_mask));
+	nni_mtx_unlock(&zt_lk);
 	return (nni_copyout_str(ustr, data, szp, t));
 }
 
@@ -2738,14 +2763,24 @@ static int
 zt_ep_get_node(void *arg, void *data, size_t *szp, nni_opt_type t)
 {
 	zt_ep *ep = arg;
-	return (nni_copyout_u64(ep->ze_ztn->zn_self, data, szp, t));
+	int    rv;
+
+	nni_mtx_lock(&zt_lk);
+	rv = nni_copyout_u64(ep->ze_ztn->zn_self, data, szp, t);
+	nni_mtx_unlock(&zt_lk);
+	return (rv);
 }
 
 static int
 zt_ep_get_nwid(void *arg, void *data, size_t *szp, nni_opt_type t)
 {
 	zt_ep *ep = arg;
-	return (nni_copyout_u64(ep->ze_nwid, data, szp, t));
+	int    rv;
+
+	nni_mtx_lock(&zt_lk);
+	rv = nni_copyout_u64(ep->ze_nwid, data, szp, t);
+	nni_mtx_unlock(&zt_lk);
+	return (rv);
 }
 
 static int
@@ -2776,7 +2811,9 @@ zt_ep_set_ping_time(void *arg, const void *data, size_t sz, nni_opt_type t)
 	int          rv;
 
 	if ((rv = nni_copyin_ms(&val, data, sz, t)) == 0) {
+		nni_mtx_lock(&zt_lk);
 		ep->ze_ping_time = val;
+		nni_mtx_unlock(&zt_lk);
 	}
 	return (rv);
 }
@@ -2785,7 +2822,12 @@ static int
 zt_ep_get_ping_time(void *arg, void *data, size_t *szp, nni_opt_type t)
 {
 	zt_ep *ep = arg;
-	return (nni_copyout_ms(ep->ze_ping_time, data, szp, t));
+	int    rv;
+
+	nni_mtx_lock(&zt_lk);
+	rv = nni_copyout_ms(ep->ze_ping_time, data, szp, t);
+	nni_mtx_unlock(&zt_lk);
+	return (rv);
 }
 
 static int
@@ -2802,7 +2844,9 @@ zt_ep_set_ping_tries(void *arg, const void *data, size_t sz, nni_opt_type t)
 	int    rv;
 
 	if ((rv = nni_copyin_int(&val, data, sz, 0, 1000000, t)) == 0) {
+		nni_mtx_lock(&zt_lk);
 		ep->ze_ping_tries = val;
+		nni_mtx_unlock(&zt_lk);
 	}
 	return (rv);
 }
@@ -2811,7 +2855,12 @@ static int
 zt_ep_get_ping_tries(void *arg, void *data, size_t *szp, nni_opt_type t)
 {
 	zt_ep *ep = arg;
-	return (nni_copyout_int(ep->ze_ping_tries, data, szp, t));
+	int    rv;
+
+	nni_mtx_lock(&zt_lk);
+	rv = nni_copyout_int(ep->ze_ping_tries, data, szp, t);
+	nni_mtx_unlock(&zt_lk);
+	return (rv);
 }
 
 static int
@@ -2822,7 +2871,9 @@ zt_ep_set_conn_time(void *arg, const void *data, size_t sz, nni_opt_type t)
 	int          rv;
 
 	if ((rv = nni_copyin_ms(&val, data, sz, t)) == 0) {
+		nni_mtx_lock(&zt_lk);
 		ep->ze_conn_time = val;
+		nni_mtx_unlock(&zt_lk);
 	}
 	return (rv);
 }
@@ -2831,7 +2882,12 @@ static int
 zt_ep_get_conn_time(void *arg, void *data, size_t *szp, nni_opt_type t)
 {
 	zt_ep *ep = arg;
-	return (nni_copyout_ms(ep->ze_conn_time, data, szp, t));
+	int    rv;
+
+	nni_mtx_lock(&zt_lk);
+	rv = nni_copyout_ms(ep->ze_conn_time, data, szp, t);
+	nni_mtx_unlock(&zt_lk);
+	return (rv);
 }
 
 static int
@@ -2842,7 +2898,9 @@ zt_ep_set_conn_tries(void *arg, const void *data, size_t sz, nni_opt_type t)
 	int    rv;
 
 	if ((rv = nni_copyin_int(&val, data, sz, 0, 1000000, t)) == 0) {
+		nni_mtx_lock(&zt_lk);
 		ep->ze_conn_tries = val;
+		nni_mtx_unlock(&zt_lk);
 	}
 	return (rv);
 }
@@ -2851,7 +2909,12 @@ static int
 zt_ep_get_conn_tries(void *arg, void *data, size_t *szp, nni_opt_type t)
 {
 	zt_ep *ep = arg;
-	return (nni_copyout_int(ep->ze_conn_tries, data, szp, t));
+	int    rv;
+
+	nni_mtx_lock(&zt_lk);
+	rv = nni_copyout_int(ep->ze_conn_tries, data, szp, t);
+	nni_mtx_unlock(&zt_lk);
+	return (rv);
 }
 
 static int
@@ -3022,25 +3085,33 @@ static nni_tran_option zt_ep_options[] = {
 	},
 };
 
-static nni_tran_ep_ops zt_ep_ops = {
-	.ep_init    = zt_ep_init,
-	.ep_fini    = zt_ep_fini,
-	.ep_connect = zt_ep_connect,
-	.ep_bind    = zt_ep_bind,
-	.ep_accept  = zt_ep_accept,
-	.ep_close   = zt_ep_close,
-	.ep_options = zt_ep_options,
+static nni_tran_dialer_ops zt_dialer_ops = {
+	.d_init    = zt_dialer_init,
+	.d_fini    = zt_ep_fini,
+	.d_connect = zt_ep_connect,
+	.d_close   = zt_ep_close,
+	.d_options = zt_ep_options,
+};
+
+static nni_tran_listener_ops zt_listener_ops = {
+	.l_init    = zt_listener_init,
+	.l_fini    = zt_ep_fini,
+	.l_bind    = zt_ep_bind,
+	.l_accept  = zt_ep_accept,
+	.l_close   = zt_ep_close,
+	.l_options = zt_ep_options,
 };
 
 // This is the ZeroTier transport linkage, and should be the
 // only global symbol in this entire file.
 static struct nni_tran zt_tran = {
-	.tran_version = NNI_TRANSPORT_VERSION,
-	.tran_scheme  = "zt",
-	.tran_ep      = &zt_ep_ops,
-	.tran_pipe    = &zt_pipe_ops,
-	.tran_init    = zt_tran_init,
-	.tran_fini    = zt_tran_fini,
+	.tran_version  = NNI_TRANSPORT_VERSION,
+	.tran_scheme   = "zt",
+	.tran_dialer   = &zt_dialer_ops,
+	.tran_listener = &zt_listener_ops,
+	.tran_pipe     = &zt_pipe_ops,
+	.tran_init     = zt_tran_init,
+	.tran_fini     = zt_tran_fini,
 };
 
 int

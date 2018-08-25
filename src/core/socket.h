@@ -46,8 +46,11 @@ extern uint32_t nni_sock_id(nni_sock *);
 extern int  nni_sock_pipe_add(nni_sock *, nni_pipe *);
 extern void nni_sock_pipe_remove(nni_sock *, nni_pipe *);
 
-extern int  nni_sock_ep_add(nni_sock *, nni_ep *);
-extern void nni_sock_ep_remove(nni_sock *, nni_ep *);
+extern int  nni_sock_add_dialer(nni_sock *, nni_dialer *);
+extern void nni_sock_remove_dialer(nni_sock *, nni_dialer *);
+
+extern int  nni_sock_add_listener(nni_sock *, nni_listener *);
+extern void nni_sock_remove_listener(nni_sock *, nni_listener *);
 
 // These are socket methods that protocol operations can expect to call.
 // Note that each of these should be called without any locks held, since
@@ -60,8 +63,6 @@ extern nni_msgq *nni_sock_sendq(nni_sock *);
 // nni_socket_recvq obtains the upper readq.  The protocol should
 // inject incoming messages from pipes to it.
 extern nni_msgq *nni_sock_recvq(nni_sock *);
-
-extern void nni_sock_reconntimes(nni_sock *, nni_duration *, nni_duration *);
 
 // nni_sock_flags returns the socket flags, used to indicate whether read
 // and or write are appropriate for the protocol.

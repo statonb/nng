@@ -26,9 +26,10 @@ struct nni_pipe {
 	nni_list_node      p_sock_node;
 	nni_list_node      p_ep_node;
 	nni_sock *         p_sock;
-	nni_ep *           p_ep;
+	nni_listener *     p_listener;
+	nni_dialer *       p_dialer;
 	bool               p_closed;
-	bool               p_stop;
+	nni_atomic_flag    p_stop;
 	bool               p_cbs;
 	int                p_refcnt;
 	nni_mtx            p_mtx;
@@ -98,19 +99,14 @@ nni_pipe_sys_fini(void)
 	}
 }
 
-static void
+void
 nni_pipe_destroy(nni_pipe *p)
 {
-	bool cbs;
 	if (p == NULL) {
 		return;
 	}
 
-	nni_mtx_lock(&p->p_mtx);
-	cbs = p->p_cbs;
-	nni_mtx_unlock(&p->p_mtx);
-
-	if (cbs) {
+	if (p->p_cbs) {
 		nni_sock_run_pipe_cb(p->p_sock, NNG_PIPE_EV_REM_POST, p->p_id);
 	}
 
@@ -126,9 +122,8 @@ nni_pipe_destroy(nni_pipe *p)
 
 	// We have exclusive access at this point, so we can check if
 	// we are still on any lists.
-	if (nni_list_node_active(&p->p_ep_node)) {
-		nni_ep_pipe_remove(p->p_ep, p);
-	}
+	nni_dialer_remove_pipe(p->p_dialer, p);     // dialer may be NULL
+	nni_listener_remove_pipe(p->p_listener, p); // listener may be NULL
 
 	if (nni_list_node_active(&p->p_sock_node)) {
 		nni_sock_pipe_remove(p->p_sock, p);
@@ -247,13 +242,9 @@ void
 nni_pipe_stop(nni_pipe *p)
 {
 	// Guard against recursive calls.
-	nni_mtx_lock(&p->p_mtx);
-	if (p->p_stop) {
-		nni_mtx_unlock(&p->p_mtx);
+	if (nni_atomic_flag_test_and_set(&p->p_stop)) {
 		return;
 	}
-	p->p_stop = true;
-	nni_mtx_unlock(&p->p_mtx);
 
 	nni_pipe_close(p);
 
@@ -283,9 +274,7 @@ nni_pipe_start_cb(void *arg)
 		return;
 	}
 
-	nni_mtx_lock(&p->p_mtx);
 	p->p_cbs = true; // We're running all cbs going forward
-	nni_mtx_unlock(&p->p_mtx);
 
 	nni_sock_run_pipe_cb(s, NNG_PIPE_EV_ADD_PRE, id);
 	if (nni_pipe_closed(p)) {
@@ -303,12 +292,10 @@ nni_pipe_start_cb(void *arg)
 }
 
 int
-nni_pipe_create(nni_ep *ep, void *tdata)
+nni_pipe_create2(nni_pipe **pp, nni_sock *sock, nni_tran *tran, void *tdata)
 {
 	nni_pipe *          p;
 	int                 rv;
-	nni_tran *          tran  = nni_ep_tran(ep);
-	nni_sock *          sock  = nni_ep_sock(ep);
 	void *              sdata = nni_sock_proto_data(sock);
 	nni_proto_pipe_ops *pops  = nni_sock_proto_pipe_ops(sock);
 
@@ -324,13 +311,12 @@ nni_pipe_create(nni_ep *ep, void *tdata)
 	p->p_tran_data  = tdata;
 	p->p_proto_ops  = *pops;
 	p->p_proto_data = NULL;
-	p->p_ep         = ep;
 	p->p_sock       = sock;
 	p->p_closed     = false;
-	p->p_stop       = false;
 	p->p_cbs        = false;
 	p->p_refcnt     = 0;
 
+	nni_atomic_flag_reset(&p->p_stop);
 	NNI_LIST_NODE_INIT(&p->p_reap_node);
 	NNI_LIST_NODE_INIT(&p->p_sock_node);
 	NNI_LIST_NODE_INIT(&p->p_ep_node);
@@ -348,14 +334,25 @@ nni_pipe_create(nni_ep *ep, void *tdata)
 	}
 
 	if ((rv != 0) ||
-	    ((rv = pops->pipe_init(&p->p_proto_data, p, sdata)) != 0) ||
-	    ((rv = nni_ep_pipe_add(ep, p)) != 0) ||
-	    ((rv = nni_sock_pipe_add(sock, p)) != 0)) {
+	    ((rv = pops->pipe_init(&p->p_proto_data, p, sdata)) != 0)) {
 		nni_pipe_destroy(p);
 		return (rv);
 	}
 
+	*pp = p;
 	return (0);
+}
+
+void
+nni_pipe_set_listener(nni_pipe *p, nni_listener *l)
+{
+	p->p_listener = l;
+}
+
+void
+nni_pipe_set_dialer(nni_pipe *p, nni_dialer *d)
+{
+	p->p_dialer = d;
 }
 
 int
@@ -371,7 +368,13 @@ nni_pipe_getopt(
 		return (o->o_get(p->p_tran_data, val, szp, t));
 	}
 	// Maybe the endpoint knows?
-	return (nni_ep_getopt(p->p_ep, name, val, szp, t));
+	if (p->p_dialer != NULL) {
+		return (nni_dialer_getopt(p->p_dialer, name, val, szp, t));
+	}
+	if (p->p_listener != NULL) {
+		return (nni_listener_getopt(p->p_listener, name, val, szp, t));
+	}
+	return (NNG_ENOTSUP);
 }
 
 void
@@ -409,15 +412,20 @@ nni_pipe_sock_id(nni_pipe *p)
 }
 
 uint32_t
-nni_pipe_ep_id(nni_pipe *p)
+nni_pipe_listener_id(nni_pipe *p)
 {
-	return (nni_ep_id(p->p_ep));
+	if (p->p_listener != NULL) {
+		return (nni_listener_id(p->p_listener));
+	}
+	return (0);
 }
-
-int
-nni_pipe_ep_mode(nni_pipe *p)
+uint32_t
+nni_pipe_dialer_id(nni_pipe *p)
 {
-	return (nni_ep_mode(p->p_ep));
+	if (p->p_dialer != NULL) {
+		return (nni_dialer_id(p->p_dialer));
+	}
+	return (0);
 }
 
 static void

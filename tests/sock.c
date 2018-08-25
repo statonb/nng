@@ -387,7 +387,7 @@ TestMain("Socket Operations", {
 				// Not appropriate for dialer.
 				So(nng_dialer_setopt_bool(
 				       ep, NNG_OPT_RAW, true) == NNG_ENOTSUP);
-				So(nng_dialer_setopt_ms(ep, NNG_OPT_RECONNMINT,
+				So(nng_dialer_setopt_ms(ep, NNG_OPT_SENDTIMEO,
 				       1) == NNG_ENOTSUP);
 				So(nng_dialer_setopt_string(ep,
 				       NNG_OPT_SOCKNAME,
@@ -402,11 +402,6 @@ TestMain("Socket Operations", {
 			Convey("Bad size checks", {
 				So(nng_dialer_setopt(ep, NNG_OPT_RECVMAXSZ,
 				       "a", 1) == NNG_EINVAL);
-			});
-			Convey("Cannot listen", {
-				nng_listener l;
-				l.id = ep.id;
-				So(nng_listener_start(l, 0) == NNG_ENOTSUP);
 			});
 		});
 
@@ -451,11 +446,6 @@ TestMain("Socket Operations", {
 			Convey("Bad size checks", {
 				So(nng_listener_setopt(ep, NNG_OPT_RECVMAXSZ,
 				       "a", 1) == NNG_EINVAL);
-			});
-			Convey("Cannot dial", {
-				nng_dialer d;
-				d.id = ep.id;
-				So(nng_dialer_start(d, 0) == NNG_ENOTSUP);
 			});
 		});
 
